@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from io import BytesIO
-from streamlit_extras.metric_cards import style_metric_cards
 import numpy as np  
 
 # Dans votre fichier app.py
@@ -46,17 +45,16 @@ if st.checkbox("Afficher un aperçu des données"):
 
 # Afficher les informations sur le cadre d'échantillonnage
 st.header("Informations sur le cadre d'échantillonnage")
-st.write("Le cadre d'échantillonnage contient les informations suivantes :")
-st.markdown("###### Nombre total d'enregistrements :")
-st.write(len(df))
-st.markdown("###### Nombre de variables :")
-st.write(len(df.columns))
-st.markdown("###### Liste des variables :")
-st.write(df.columns.tolist())
+st.metric("###### Nombre total d'enregistrements :", len(df))
+st.metric("###### Nombre de variables :", len(df.columns))
 st.markdown("###### Types de variables")
 st.write(df.dtypes)
-st.markdown("###### Statistiques descriptives du cadre d'échantillonnage")
-st.write(df.describe(include='all'))
+st.markdown("###### Statistiques descriptives des variables qualitatives")
+var_quali = ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area','Block']
+st.write(df[var_quali].describe().loc[['count','unique', 'top', 'freq']])
+st.markdown("###### Statistiques descriptives des variables quantitatives")
+var_quanti = ['pop_block','Lodging','Cumulative population']
+st.write(df[var_quanti].describe().loc[['mean', 'std','min', '25%', '50%', '75%', 'max']])
 
 # Méthode 1: Aléatoire simple sans remise (SAS)
 st.header("Aléatoire Simple Sans Remise (SAS)")
@@ -66,7 +64,7 @@ sample_size_sas = st.number_input("Sélectionnez la taille de l'échantillon",
                                  max_value=len(df), 
                                  value=min(100, len(df)//2))
 var_comparative = st.selectbox("Sélectionnez la variable comparative", 
-                              df.select_dtypes(include=['object', 'category']).columns)
+                              ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area'])
 
 if st.button("Tirer l'échantillon SAS"):
     # Tirage aléatoire
@@ -77,21 +75,15 @@ if st.button("Tirer l'échantillon SAS"):
     # Affichage de la carte avec l'échantillon*
     st.write("Les points sur la carte représentent les gouvernorats de l'échantillon.")
     st.map(sample_sas.dropna(subset=['latitude', 'longitude']))
-    # Téléchargement de l'échantillon
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        sample_sas.to_excel(writer, sheet_name='Echantillon_SAS', index=False)
-    st.download_button(
-        label="Télécharger l'échantillon SAS",
-        data=output.getvalue(),
-        file_name="echantillon_SAS.xlsx",
-        mime="application/vnd.ms-excel"
-    )
     
-    # Statistiques descriptives
-    st.markdown("###### Statistiques descriptives")
-    st.write(sample_sas.describe(include='all'))
-    
+    # statistiques descriptives
+    st.markdown("###### Statistiques descriptives des variables qualitatives")
+    var_quali = ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area','Block']
+    st.write(sample_sas[var_quali].describe().loc[['count','unique', 'top', 'freq']])
+    st.markdown("###### Statistiques descriptives des variables quantitatives")
+    var_quanti = ['pop_block','Lodging','Cumulative population']
+    st.write(sample_sas[var_quanti].describe().loc[['mean', 'std','min', '25%', '50%', '75%', 'max']])
+
     # Tableau comparatif
     st.markdown("###### Tableau comparatif des proportions")
 
@@ -113,6 +105,17 @@ if st.button("Tirer l'échantillon SAS"):
     ax.set_ylabel("Proportion")
     st.pyplot(fig)
 
+     # Téléchargement de l'échantillon
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        sample_sas.to_excel(writer, sheet_name='Echantillon_SAS', index=False)
+    st.download_button(
+        label="Télécharger l'échantillon SAS",
+        data=output.getvalue(),
+        file_name="echantillon_SAS.xlsx",
+        mime="application/vnd.ms-excel"
+    )
+
 # Méthode 2: Stratification à allocation proportionnelle
 st.header("Stratification à Allocation Proportionnelle")
 
@@ -123,10 +126,7 @@ sample_size_strat = st.number_input("Sélectionnez la taille de l'échantillon)"
                                    value=min(100, len(df)//2))
 
 strat_var = st.selectbox("Sélectionnez la variable de stratification", 
-                        ['CODE SECTOR', 'Block', 'CODE BLOCK', 'Area'])
-
-aux_var = st.selectbox("Variable auxiliaire", 
-                      df.select_dtypes(include=['object', 'category']).columns)
+                        ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area'])
 
 if st.button("Tirer l'échantillon stratifié"):
     # Calcul des allocations proportionnelles
@@ -166,8 +166,24 @@ if st.button("Tirer l'échantillon stratifié"):
     st.write("Les points sur la carte représentent les gouvernorats de l'échantillon stratifié.")
     st.map(sample_strat.dropna(subset=['latitude', 'longitude']))
 
+    # statistiques descriptives
+    st.markdown("###### Statistiques descriptives des variables qualitatives")
+    var_quali = ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area','Block']
+    st.write(sample_strat[var_quali].describe().loc[['count','unique', 'top', 'freq']])
+    st.markdown("###### Statistiques descriptives des variables quantitatives")
+    var_quanti = ['pop_block','Lodging','Cumulative population']
+    st.write(sample_strat[var_quanti].describe().loc[['mean', 'std','min', '25%', '50%', '75%', 'max']])
     
-    # Téléchargement de l'échantillon
+    # Visualisation des allocations
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Diagramme des allocations
+    allocation_df.plot(x='Strate', y='Allocation (nh)', kind='bar', ax=ax)
+    ax.set_title("Allocation par strate")
+    ax.tick_params(axis='x', rotation=45)
+    st.pyplot(fig)
+
+    # Téléchargement de l’échantillon
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         sample_strat.to_excel(writer, sheet_name='Echantillon_Stratifie', index=False)
@@ -178,25 +194,6 @@ if st.button("Tirer l'échantillon stratifié"):
         file_name="echantillon_stratifie.xlsx",
         mime="application/vnd.ms-excel"
     )
-    
-    # Statistiques descriptives
-    st.markdown("###### Statistiques descriptives")
-    st.write(sample_strat.describe(include='all'))
-    
-    # Visualisation des allocations
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-    
-    # Diagramme des allocations
-    allocation_df.plot(x='Strate', y='Allocation (nh)', kind='bar', ax=ax1)
-    ax1.set_title("Allocation par strate")
-    ax1.tick_params(axis='x', rotation=45)
-    
-    # Diagramme de la variable auxiliaire
-    if aux_var in sample_strat.columns:
-        sample_strat[aux_var].value_counts().plot(kind='pie', autopct='%1.1f%%', ax=ax2)
-        ax2.set_title(f"Répartition de {aux_var} dans l'échantillon")
-    
-    st.pyplot(fig)
 
 st.header("Sondage Saskatchewan (Sondage systématique stratifié)")
 
@@ -206,10 +203,10 @@ sample_size_sask = st.number_input("Taille de l'échantillon pour Saskatchewan",
                                    value=min(100, len(df)//2))
 
 strat_var_sask = st.selectbox("Variable de stratification (Saskatchewan)", 
-                              ['CODE SECTOR', 'Block', 'CODE BLOCK', 'Area'], key="sask_strat")
+                              ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area'], key="sask_strat")
 
 ordre_var = st.selectbox("Variable d'ordre croissant dans chaque strate", 
-                         df.select_dtypes(include=['int64', 'float64']).columns)
+                         ['pop_block','Lodging','Cumulative population'], key="sask_order")
 
 if st.button("Tirer l'échantillon Saskatchewan"):
     strata_sizes = df[strat_var_sask].value_counts()
@@ -244,8 +241,26 @@ if st.button("Tirer l'échantillon Saskatchewan"):
     st.markdown("###### Échantillon Saskatchewan")
     st.dataframe(sask_final_sample)
 
+    # Affichage de la carte avec l'échantillon Saskatchewan
+    st.write("Les points sur la carte représentent les gouvernorats de l'échantillon Saskatchewan.")
     st.map(sask_final_sample.dropna(subset=['latitude', 'longitude']))
 
+    # statistiques descriptives
+    st.markdown("###### Statistiques descriptives des variables qualitatives")
+    var_quali = ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area','Block']
+    st.write(sask_final_sample[var_quali].describe().loc[['count','unique', 'top', 'freq']])
+    st.markdown("###### Statistiques descriptives des variables quantitatives")
+    var_quanti = ['pop_block','Lodging','Cumulative population']
+    st.write(sask_final_sample[var_quanti].describe().loc[['mean', 'std','min', '25%', '50%', '75%', 'max']])
+
+    # Visualisation des allocations
+    fig, ax = plt.subplots(figsize=(10, 6))
+    allocation_df_sask.plot(x='Strate', y='Allocation (nh)', kind='bar', ax=ax)
+    ax.set_title("Allocation par strate")
+    ax.tick_params(axis='x', rotation=45)
+    st.pyplot(fig)
+
+    # téléchargement de l'échantillon
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         sask_final_sample.to_excel(writer, sheet_name='Echantillon_Saskatchewan', index=False)
@@ -257,8 +272,6 @@ if st.button("Tirer l'échantillon Saskatchewan"):
         mime="application/vnd.ms-excel"
     )
 
-    st.markdown("###### Statistiques descriptives")
-    st.write(sask_final_sample.describe(include='all'))
 
 
 
