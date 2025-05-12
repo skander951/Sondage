@@ -21,7 +21,7 @@ Bienvenue dans **Sampling App**, une application interactive elaborée par **Ska
 st.header("Fonctionnalités :")
 st.write("""1. **Aléatoire simple sans remise (SAS)**
 2. **Stratification à allocation proportionnelle**
-3. **Sondage Saskatchewan (Sondage systématique stratifié)**
+3. **Sondage à Probabilités Inégales (PPS)**
          
 Vous pouvez visualiser, comparer et télécharger les échantillons générés.
 """)
@@ -195,82 +195,76 @@ if st.button("Tirer l'échantillon stratifié"):
         mime="application/vnd.ms-excel"
     )
 
-st.header("Sondage Saskatchewan (Sondage systématique stratifié)")
+# Méthode 3 : Sondage à Probabilités Inégales (PPS)
+st.header("Sondage à Probabilités Inégales (PPS)")
 
-sample_size_sask = st.number_input("Taille de l'échantillon pour Saskatchewan", 
-                                   min_value=1, 
-                                   max_value=len(df), 
-                                   value=min(100, len(df)//2))
+# Choix de la variable de taille
+pps_size_var = st.selectbox("Selectionner la Variable", 
+                            ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area'])
 
-strat_var_sask = st.selectbox("Variable de stratification (Saskatchewan)", 
-                              ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area'], key="sask_strat")
+# Taille de l'échantillon
+sample_size_pps = st.number_input("Taille de l'échantillon PPS", 
+                                  min_value=1, 
+                                  max_value=len(df), 
+                                  value=min(100, len(df)//2))
 
-ordre_var = st.selectbox("Variable d'ordre croissant dans chaque strate", 
-                         ['pop_block','Lodging','Cumulative population'], key="sask_order")
+if st.button("Tirer l'échantillon PPS"):
+    df_valid = df[df[pps_size_var] > 0].copy()
+    
+    if df_valid.empty or len(df_valid) < sample_size_pps:
+        st.error("Pas assez d'observations valides pour tirer l'échantillon.")
+    else:
+        # Calcul des probabilités de sélection
+        weights = df_valid[pps_size_var]
+        probabilities = weights / weights.sum()
 
-if st.button("Tirer l'échantillon Saskatchewan"):
-    strata_sizes = df[strat_var_sask].value_counts()
-    allocations = (strata_sizes / strata_sizes.sum() * sample_size_sask).round().astype(int)
-    diff = sample_size_sask - allocations.sum()
-    if diff != 0:
-        allocations.iloc[0] += diff
+        # Tirage sans remise selon les probabilités
+        sample_pps = df_valid.sample(n=sample_size_pps, weights=probabilities, random_state=42)
 
-    st.markdown("###### Allocations par strate")
-    allocation_df_sask = pd.DataFrame({
-        'Strate': allocations.index,
-        'Taille population': strata_sizes,
-        'Allocation (nh)': allocations
-    })
-    st.dataframe(allocation_df_sask)
+        st.markdown("###### Échantillon PPS tiré")
+        st.dataframe(sample_pps)
 
-    # Tirage Saskatchewan
-    sask_samples = []
-    for stratum, nh in allocations.items():
-        stratum_df = df[df[strat_var_sask] == stratum].sort_values(by=ordre_var).reset_index(drop=True)
-        Nh = len(stratum_df)
-        if nh == 0 or Nh == 0:
-            continue
-        k = Nh / nh
-        r = np.random.uniform(0, k)
-        indices = [int(r + i * k) for i in range(nh) if int(r + i * k) < Nh]
-        sask_sample = stratum_df.iloc[indices]
-        sask_samples.append(sask_sample)
+        # Carte
+        st.write("Les points sur la carte représentent les unités tirées avec PPS.")
+        st.map(sample_pps.dropna(subset=['latitude', 'longitude']))
 
-    sask_final_sample = pd.concat(sask_samples)
+        # Téléchargement
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            sample_pps.to_excel(writer, sheet_name='Echantillon_PPS', index=False)
+        st.download_button(
+            label="Télécharger l'échantillon PPS",
+            data=output.getvalue(),
+            file_name="echantillon_pps.xlsx",
+            mime="application/vnd.ms-excel"
+        )
 
-    st.markdown("###### Échantillon Saskatchewan")
-    st.dataframe(sask_final_sample)
+        # Statistiques descriptives
+        st.markdown("###### Statistiques descriptives")
+        st.write(sample_pps.describe(include='all'))
 
-    # Affichage de la carte avec l'échantillon Saskatchewan
-    st.write("Les points sur la carte représentent les gouvernorats de l'échantillon Saskatchewan.")
-    st.map(sask_final_sample.dropna(subset=['latitude', 'longitude']))
+        # Comparaison des proportions sur une variable catégorielle
+        var_pps_comp = st.selectbox("Variable comparative pour PPS", 
+                                    df.select_dtypes(include=['object', 'category']).columns)
 
-    # statistiques descriptives
-    st.markdown("###### Statistiques descriptives des variables qualitatives")
-    var_quali = ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area','Block']
-    st.write(sask_final_sample[var_quali].describe().loc[['count','unique', 'top', 'freq']])
-    st.markdown("###### Statistiques descriptives des variables quantitatives")
-    var_quanti = ['pop_block','Lodging','Cumulative population']
-    st.write(sask_final_sample[var_quanti].describe().loc[['mean', 'std','min', '25%', '50%', '75%', 'max']])
+        pop_prop = df[var_pps_comp].value_counts(normalize=True).reset_index()
+        pop_prop.columns = [var_pps_comp, 'Proportion population']
 
-    # Visualisation des allocations
-    fig, ax = plt.subplots(figsize=(10, 6))
-    allocation_df_sask.plot(x='Strate', y='Allocation (nh)', kind='bar', ax=ax)
-    ax.set_title("Allocation par strate")
-    ax.tick_params(axis='x', rotation=45)
-    st.pyplot(fig)
+        sample_prop = sample_pps[var_pps_comp].value_counts(normalize=True).reset_index()
+        sample_prop.columns = [var_pps_comp, 'Proportion échantillon']
 
-    # téléchargement de l'échantillon
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        sask_final_sample.to_excel(writer, sheet_name='Echantillon_Saskatchewan', index=False)
-        allocation_df_sask.to_excel(writer, sheet_name='Allocations', index=False)
-    st.download_button(
-        label="Télécharger l'échantillon Saskatchewan",
-        data=output.getvalue(),
-        file_name="echantillon_saskatchewan.xlsx",
-        mime="application/vnd.ms-excel"
-    )
+        comparison_df = pd.merge(pop_prop, sample_prop, on=var_pps_comp, how='outer').fillna(0)
+
+        st.markdown("###### Tableau comparatif des proportions (PPS)")
+        st.dataframe(comparison_df)
+
+        # Graphique
+        fig, ax = plt.subplots(figsize=(10, 6))
+        comparison_df.set_index(var_pps_comp).plot(kind='bar', ax=ax)
+        ax.set_title(f"Comparaison des proportions: {var_pps_comp} (PPS)")
+        ax.set_ylabel("Proportion")
+        st.pyplot(fig)
+
 
 
 
