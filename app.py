@@ -128,6 +128,8 @@ sample_size_strat = st.number_input("Sélectionnez la taille de l'échantillon)"
 strat_var = st.selectbox("Sélectionnez la variable de stratification", 
                         ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area'])
 
+aux_var = st.selectbox("Sélectionnez une variable auxiliaire à visualiser",['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area','Block'])
+
 if st.button("Tirer l'échantillon stratifié"):
     # Calcul des allocations proportionnelles
     strata_sizes = df[strat_var].value_counts()
@@ -174,13 +176,18 @@ if st.button("Tirer l'échantillon stratifié"):
     var_quanti = ['pop_block','Lodging','Cumulative population']
     st.write(sample_strat[var_quanti].describe().loc[['mean', 'std','min', '25%', '50%', '75%', 'max']])
     
-    # Visualisation des allocations
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Diagramme des allocations
-    allocation_df.plot(x='Strate', y='Allocation (nh)', kind='bar', ax=ax)
-    ax.set_title("Allocation par strate")
-    ax.tick_params(axis='x', rotation=45)
+    # Visualisation : Allocation + Répartition auxiliaire
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+    allocation_df.plot(x='Strate', y='Allocation (nh)', kind='bar', ax=ax1)
+    ax1.set_title("Allocation par strate")
+    ax1.tick_params(axis='x', rotation=45)
+
+    if aux_var in sample_strat.columns:
+        sample_strat[aux_var].value_counts().plot(kind='pie', autopct='%1.1f%%', ax=ax2)
+        ax2.set_title(f"Répartition de {aux_var} dans l'échantillon")
+        ax2.set_ylabel("")  # Supprimer le label y
+
     st.pyplot(fig)
 
     # Téléchargement de l’échantillon
@@ -200,7 +207,7 @@ st.header("Sondage à Probabilités Inégales (PPS)")
 
 # Choix de la variable de taille
 pps_size_var = st.selectbox("Selectionner la Variable", 
-                            ['Region', 'GOVERNORATE', 'DELEGATION', 'SECTOR', 'Area'])
+                            ['pop_block','Lodging','Cumulative population'])
 
 # Taille de l'échantillon
 sample_size_pps = st.number_input("Taille de l'échantillon PPS", 
@@ -209,8 +216,8 @@ sample_size_pps = st.number_input("Taille de l'échantillon PPS",
                                   value=min(100, len(df)//2))
 
 if st.button("Tirer l'échantillon PPS"):
+    df[pps_size_var] = pd.to_numeric(df[pps_size_var], errors='coerce')
     df_valid = df[df[pps_size_var] > 0].copy()
-    
     if df_valid.empty or len(df_valid) < sample_size_pps:
         st.error("Pas assez d'observations valides pour tirer l'échantillon.")
     else:
